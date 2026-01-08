@@ -580,6 +580,69 @@
             100% { transform: rotate(360deg); }
         }
         
+        .question-progress {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin: 20px 0;
+            justify-content: center;
+        }
+        
+        .question-progress-item {
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            cursor: pointer;
+            border: 2px solid #e1e5eb;
+            background: white;
+            transition: all 0.3s;
+        }
+        
+        .question-progress-item.answered {
+            background: #4a6fa5;
+            color: white;
+            border-color: #4a6fa5;
+        }
+        
+        .question-progress-item.current {
+            background: #ffc107;
+            color: white;
+            border-color: #ffc107;
+            transform: scale(1.1);
+        }
+        
+        .question-progress-item.unanswered {
+            background: #f8f9fa;
+            color: #666;
+        }
+        
+        .submit-validation {
+            background: #fff3cd;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            border: 2px solid #ffeaa7;
+            display: none;
+        }
+        
+        .unanswered-list {
+            list-style: none;
+            padding: 0;
+            margin: 10px 0 0 0;
+        }
+        
+        .unanswered-list li {
+            padding: 8px 12px;
+            background: white;
+            margin-bottom: 5px;
+            border-radius: 6px;
+            border-right: 3px solid #ffc107;
+        }
+        
         @media (max-width: 768px) {
             .test-header {
                 padding: 20px;
@@ -621,6 +684,16 @@
             
             .navigation button {
                 width: 100%;
+            }
+            
+            .question-progress {
+                gap: 5px;
+            }
+            
+            .question-progress-item {
+                width: 30px;
+                height: 30px;
+                font-size: 14px;
             }
         }
         
@@ -751,6 +824,17 @@
                     </p>
                 </div>
                 
+                <div class="question-progress" id="questionProgress"></div>
+                
+                <div class="submit-validation" id="submitValidation">
+                    <h4 style="margin: 0 0 15px 0; color: #856404; display: flex; align-items: center; gap: 10px;">
+                        <i class="fas fa-exclamation-triangle"></i> لا يمكن إنهاء الاختبار
+                    </h4>
+                    <p style="margin: 0 0 10px 0; color: #856404;">يجب الإجابة على جميع الأسئلة قبل إنهاء الاختبار</p>
+                    <p style="margin: 0 0 10px 0; color: #856404;">الأسئلة التي تحتاج للإجابة:</p>
+                    <ul class="unanswered-list" id="unansweredList"></ul>
+                </div>
+                
                 <div class="question-container" id="questionContainer">
                     <!-- سيتم عرض الأسئلة هنا -->
                 </div>
@@ -764,7 +848,7 @@
                         السؤال التالي <i class="fas fa-arrow-left"></i>
                     </button>
                     
-                    <button onclick="finishTest()" id="finishBtn" class="btn btn-success" style="display: none;">
+                    <button onclick="validateAndFinishTest()" id="finishBtn" class="btn btn-success" style="display: none;">
                         <i class="fas fa-check-circle"></i> إنهاء الاختبار
                     </button>
                 </div>
@@ -804,7 +888,6 @@
     </div>
 
     <script>
-        // متغيرات التطبيق
         let currentStudent = null;
         let currentTest = null;
         let selectedTest = null;
@@ -815,7 +898,6 @@
         let totalTestTime = 0;
         let testsList = [];
         
-        // متغيرات الرسم
         let drawingCanvas = null;
         let drawingContext = null;
         let isDrawing = false;
@@ -823,12 +905,9 @@
         let currentColor = '#000000';
         let currentLineWidth = 2;
         
-        // تهيئة الصفحة
         document.addEventListener('DOMContentLoaded', function() {
-            // تحميل الاختبارات
             loadTests();
             
-            // إعداد حقل السجل المدني
             const ssnInput = document.getElementById('studentSsn');
             ssnInput.addEventListener('keypress', function(e) {
                 if (e.key === 'Enter') {
@@ -836,16 +915,13 @@
                 }
             });
             
-            // السماح بأرقام فقط
             ssnInput.addEventListener('input', function() {
                 this.value = this.value.replace(/[^0-9]/g, '');
             });
             
-            // تحديث معلومات الرأس من بيانات المعلم
             updateHeaderInfo();
         });
         
-        // تحديث معلومات الرأس
         function updateHeaderInfo() {
             const teacherData = {
                 country: localStorage.getItem('teacher_country') || 'المملكة العربية السعودية',
@@ -860,7 +936,6 @@
             document.getElementById('subjectHeader').textContent = teacherData.subject;
         }
         
-        // حفظ بيانات الرأس
         function saveHeaderInfo() {
             const country = document.getElementById('country')?.value || 'المملكة العربية السعودية';
             const administration = document.getElementById('administration')?.value || 'إدارة التعليم';
@@ -873,12 +948,10 @@
             localStorage.setItem('teacher_subject', subject);
         }
         
-        // تحميل الاختبارات
         function loadTests() {
             testsList = JSON.parse(localStorage.getItem('teacher_tests')) || [];
         }
         
-        // تسجيل الدخول
         function login() {
             const ssn = document.getElementById('studentSsn').value.trim();
             const loginBtn = document.getElementById('loginBtn');
@@ -893,29 +966,23 @@
                 return;
             }
             
-            // عرض مؤشر التحميل
             const originalContent = loginBtn.innerHTML;
             loginBtn.innerHTML = '<span class="loading"></span> جاري التحقق...';
             loginBtn.disabled = true;
             
             setTimeout(() => {
-                // تحميل قائمة الطلاب
                 const studentsList = JSON.parse(localStorage.getItem('teacher_students')) || [];
                 
-                // البحث عن الطالب باستخدام السجل المدني
                 currentStudent = studentsList.find(student => student.ssn === ssn);
                 
                 if (currentStudent) {
-                    // حفظ حالة تسجيل الدخول
                     localStorage.setItem('current_student', JSON.stringify(currentStudent));
                     
-                    // تحديث معلومات الطالب في الرأس
                     document.getElementById('studentNameHeader').textContent = currentStudent.name;
                     document.getElementById('studentSsnHeader').textContent = currentStudent.ssn;
                     document.getElementById('studentInfoHeader').style.display = 'flex';
                     document.getElementById('testInfoHeader').style.display = 'grid';
                     
-                    // عرض قسم الاختبارات
                     showTestsSection();
                     
                     showAlert(`مرحباً ${currentStudent.name}!`, 'success');
@@ -923,19 +990,16 @@
                     showAlert('رقم السجل المدني غير مسجل. يرجى التواصل مع المعلم', 'error');
                 }
                 
-                // إعادة تعيين زر الدخول
                 loginBtn.innerHTML = originalContent;
                 loginBtn.disabled = false;
             }, 1000);
         }
         
-        // تسجيل الخروج
         function logout() {
             if (confirm('هل تريد تسجيل الخروج؟')) {
                 localStorage.removeItem('current_student');
                 currentStudent = null;
                 
-                // إخفاء معلومات الطالب
                 document.getElementById('studentInfoHeader').style.display = 'none';
                 document.getElementById('testInfoHeader').style.display = 'none';
                 
@@ -945,50 +1009,41 @@
             }
         }
         
-        // عرض قسم تسجيل الدخول
         function showLoginSection() {
             hideAllSections();
             document.getElementById('loginSection').classList.add('active');
         }
         
-        // عرض قسم الاختبارات
         function showTestsSection() {
             hideAllSections();
             
-            // تحميل وعرض الاختبارات المتاحة
             displayAvailableTests();
             
             document.getElementById('testsSection').classList.add('active');
         }
         
-        // عرض قسم الاختبار
         function showTestSection() {
             hideAllSections();
             document.getElementById('testSection').classList.add('active');
         }
         
-        // عرض قسم الإكمال
         function showCompletionSection() {
             hideAllSections();
             document.getElementById('completionSection').classList.add('active');
         }
         
-        // إخفاء جميع الأقسام
         function hideAllSections() {
             document.querySelectorAll('.section').forEach(section => {
                 section.classList.remove('active');
             });
         }
         
-        // عرض الاختبارات المتاحة
         function displayAvailableTests() {
             const container = document.getElementById('availableTests');
             const noTestsMessage = document.getElementById('noTestsMessage');
             
-            // تصفية الاختبارات المنشورة فقط
             const publishedTests = testsList.filter(test => test.isPublished);
             
-            // التحقق من الوقت للاختبارات المنشورة
             const now = new Date();
             const availableTests = publishedTests.filter(test => {
                 const start = new Date(test.startTime);
@@ -1008,7 +1063,6 @@
             let html = '';
             
             availableTests.forEach((test, index) => {
-                // التحقق مما إذا كان الطالب قد أدى هذا الاختبار مسبقاً
                 const results = JSON.parse(localStorage.getItem('student_results')) || [];
                 const hasTakenTest = results.some(result => 
                     result.studentSsn === currentStudent.ssn && result.testId === test.id
@@ -1048,9 +1102,7 @@
             container.innerHTML = html;
         }
         
-        // اختيار اختبار
         function selectTest(index) {
-            // تصفية الاختبارات المنشورة فقط
             const publishedTests = testsList.filter(test => test.isPublished);
             const now = new Date();
             const availableTests = publishedTests.filter(test => {
@@ -1066,7 +1118,6 @@
             
             const test = availableTests[index];
             
-            // التحقق من الوقت
             const start = new Date(test.startTime);
             const end = new Date(test.endTime);
             const nowTime = new Date();
@@ -1081,7 +1132,6 @@
                 return;
             }
             
-            // التحقق مما إذا كان الطالب قد أدى هذا الاختبار مسبقاً
             const results = JSON.parse(localStorage.getItem('student_results')) || [];
             const hasTakenTest = results.some(result => 
                 result.studentSsn === currentStudent.ssn && result.testId === test.id
@@ -1095,39 +1145,31 @@
             selectedTest = {...test};
             currentTest = selectedTest;
             
-            // تحديث معلومات المادة في الرأس
             document.getElementById('subjectHeader').textContent = currentTest.subject;
             
-            // بدء الاختبار
             startTest();
         }
         
-        // بدء الاختبار
         function startTest() {
             if (!currentTest) {
                 showAlert('لم يتم اختيار اختبار', 'error');
                 return;
             }
             
-            // تهيئة الإجابات
             studentAnswers = new Array(currentTest.questions.length).fill(null);
             currentQuestionIndex = 0;
             
-            // تعيين المؤقت
             const now = new Date();
             const endTime = new Date(currentTest.endTime);
             
-            // حساب الوقت المتبقي بالثواني
             timeRemaining = Math.floor((endTime - now) / 1000);
             totalTestTime = timeRemaining;
             
-            // إذا كان الوقت المتبقي أقل من مدة الاختبار، استخدم المدة المتبقية
             if (timeRemaining > currentTest.duration * 60) {
                 timeRemaining = currentTest.duration * 60;
                 totalTestTime = timeRemaining;
             }
             
-            // إذا انتهى الوقت، لا تبدأ الاختبار
             if (timeRemaining <= 0) {
                 showAlert('انتهى وقت الاختبار', 'error');
                 return;
@@ -1135,38 +1177,32 @@
             
             updateTimerDisplay();
             
-            // إظهار المؤقت
             document.getElementById('timerContainer').style.display = 'block';
             
-            // بدء المؤقت
             if (timerInterval) clearInterval(timerInterval);
             timerInterval = setInterval(updateTimer, 1000);
             
-            // عرض الاختبار
             showTestSection();
             displayQuestion(currentQuestionIndex);
+            updateQuestionProgress();
         }
         
-        // تحديث المؤقت
         function updateTimer() {
             timeRemaining--;
             updateTimerDisplay();
             
-            // تحديث شريط التقدم
             const progress = ((totalTestTime - timeRemaining) / totalTestTime) * 100;
             document.getElementById('testProgress').style.width = `${progress}%`;
             
-            // تغيير لون المؤقت
             const timerElement = document.getElementById('timerDisplay');
-            if (timeRemaining <= 300) { // 5 دقائق
+            if (timeRemaining <= 300) {
                 timerElement.classList.remove('warning');
                 timerElement.classList.add('danger');
-            } else if (timeRemaining <= 600) { // 10 دقائق
+            } else if (timeRemaining <= 600) {
                 timerElement.classList.add('warning');
                 timerElement.classList.remove('danger');
             }
             
-            // إنهاء الاختبار عند انتهاء الوقت
             if (timeRemaining <= 0) {
                 clearInterval(timerInterval);
                 finishTest();
@@ -1174,7 +1210,6 @@
             }
         }
         
-        // تحديث عرض المؤقت
         function updateTimerDisplay() {
             const minutes = Math.floor(timeRemaining / 60);
             const seconds = timeRemaining % 60;
@@ -1182,7 +1217,43 @@
                 `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
         }
         
-        // عرض السؤال
+        function updateQuestionProgress() {
+            const container = document.getElementById('questionProgress');
+            if (!container) return;
+            
+            let html = '';
+            
+            currentTest.questions.forEach((question, index) => {
+                const isAnswered = studentAnswers[index] !== null;
+                const isCurrent = index === currentQuestionIndex;
+                
+                let className = 'question-progress-item';
+                if (isCurrent) {
+                    className += ' current';
+                } else if (isAnswered) {
+                    className += ' answered';
+                } else {
+                    className += ' unanswered';
+                }
+                
+                html += `
+                    <div class="${className}" onclick="goToQuestion(${index})">
+                        ${index + 1}
+                    </div>
+                `;
+            });
+            
+            container.innerHTML = html;
+        }
+        
+        function goToQuestion(index) {
+            if (index >= 0 && index < currentTest.questions.length) {
+                currentQuestionIndex = index;
+                displayQuestion(currentQuestionIndex);
+                updateQuestionProgress();
+            }
+        }
+        
         function displayQuestion(index) {
             if (!currentTest || index >= currentTest.questions.length) {
                 return;
@@ -1203,7 +1274,6 @@
             `;
             
             if (question.type === 'mcq') {
-                // بناء خيارات السؤال
                 let optionsHtml = '<div class="options-container">';
                 question.options.forEach((option, optionIndex) => {
                     const isSelected = studentAnswers[index] === optionIndex;
@@ -1219,7 +1289,6 @@
                 questionHtml += optionsHtml;
                 
             } else {
-                // بناء واجهة السؤال المقالي
                 questionHtml += `
                     <div class="essay-container">
                         ${question.instructions ? `
@@ -1263,25 +1332,20 @@
             
             container.innerHTML = questionHtml;
             
-            // إذا كان سؤال مقالي، تهيئة لوحة الرسم
             if (question.type === 'essay') {
                 initializeDrawingCanvas(index);
             }
             
-            // تحديث أزرار التنقل
             updateNavigationButtons();
         }
         
-        // تهيئة لوحة الرسم
         function initializeDrawingCanvas(questionIndex) {
             drawingCanvas = document.getElementById('drawingCanvas');
             drawingContext = drawingCanvas.getContext('2d');
             
-            // تعيين خصائص الرسم الافتراضية
             drawingContext.lineCap = 'round';
             drawingContext.lineJoin = 'round';
             
-            // استعادة الرسم السابق إذا كان موجوداً
             const savedAnswer = studentAnswers[questionIndex];
             if (savedAnswer && savedAnswer.drawing) {
                 const img = new Image();
@@ -1290,28 +1354,23 @@
                 };
                 img.src = savedAnswer.drawing;
             } else {
-                // مسح اللوحة
                 drawingContext.fillStyle = 'white';
                 drawingContext.fillRect(0, 0, drawingCanvas.width, drawingCanvas.height);
             }
             
-            // إضافة أحداث الماوس
             drawingCanvas.addEventListener('mousedown', startDrawing);
             drawingCanvas.addEventListener('mousemove', draw);
             drawingCanvas.addEventListener('mouseup', stopDrawing);
             drawingCanvas.addEventListener('mouseout', stopDrawing);
             
-            // إضافة أحداث اللمس
             drawingCanvas.addEventListener('touchstart', handleTouchStart);
             drawingCanvas.addEventListener('touchmove', handleTouchMove);
             drawingCanvas.addEventListener('touchend', stopDrawing);
         }
         
-        // تعيين أداة الرسم
         function setDrawingTool(tool) {
             currentTool = tool;
             
-            // تحديث الأزرار النشطة
             document.querySelectorAll('.drawing-tool').forEach(btn => {
                 btn.classList.remove('active');
             });
@@ -1326,7 +1385,6 @@
             }
         }
         
-        // تعيين لون الرسم
         function setDrawingColor(color) {
             currentColor = color;
             if (currentTool === 'pen') {
@@ -1334,7 +1392,6 @@
             }
         }
         
-        // تعيين عرض الخط
         function setLineWidth(width) {
             currentLineWidth = parseInt(width);
             if (currentTool === 'pen') {
@@ -1344,7 +1401,6 @@
             }
         }
         
-        // مسح اللوحة
         function clearCanvas() {
             if (confirm('هل تريد مسح الرسم بالكامل؟')) {
                 drawingContext.fillStyle = 'white';
@@ -1353,13 +1409,11 @@
             }
         }
         
-        // بدء الرسم
         function startDrawing(e) {
             isDrawing = true;
             draw(e);
         }
         
-        // الرسم
         function draw(e) {
             if (!isDrawing) return;
             
@@ -1372,11 +1426,9 @@
             drawingContext.beginPath();
             drawingContext.moveTo(x, y);
             
-            // حفظ الرسم تلقائياً
             saveDrawingAnswer(currentQuestionIndex);
         }
         
-        // التعامل مع اللمس
         function handleTouchStart(e) {
             e.preventDefault();
             const touch = e.touches[0];
@@ -1397,35 +1449,32 @@
             drawingCanvas.dispatchEvent(mouseEvent);
         }
         
-        // إيقاف الرسم
         function stopDrawing() {
             isDrawing = false;
             drawingContext.beginPath();
         }
         
-        // حفظ إجابة الرسم
         function saveDrawingAnswer(questionIndex) {
             if (!studentAnswers[questionIndex]) {
                 studentAnswers[questionIndex] = {};
             }
             studentAnswers[questionIndex].drawing = drawingCanvas.toDataURL();
             saveTemporaryAnswers();
+            updateQuestionProgress();
         }
         
-        // حفظ إجابة النص
         function saveEssayAnswer(questionIndex, text) {
             if (!studentAnswers[questionIndex]) {
                 studentAnswers[questionIndex] = {};
             }
             studentAnswers[questionIndex].text = text;
             saveTemporaryAnswers();
+            updateQuestionProgress();
         }
         
-        // اختيار الإجابة (لأسئلة الاختيار من متعدد)
         function selectAnswer(optionIndex) {
             studentAnswers[currentQuestionIndex] = optionIndex;
             
-            // تحديث عرض الخيارات
             const options = document.querySelectorAll('.option');
             options.forEach((option, index) => {
                 if (index === optionIndex) {
@@ -1437,11 +1486,10 @@
                 }
             });
             
-            // حفظ الإجابات مؤقتاً
             saveTemporaryAnswers();
+            updateQuestionProgress();
         }
         
-        // حفظ الإجابات المؤقتة
         function saveTemporaryAnswers() {
             const tempData = {
                 studentSsn: currentStudent.ssn,
@@ -1452,20 +1500,17 @@
             localStorage.setItem('temp_test_data', JSON.stringify(tempData));
         }
         
-        // تحديث أزرار التنقل
         function updateNavigationButtons() {
             const prevBtn = document.getElementById('prevBtn');
             const nextBtn = document.getElementById('nextBtn');
             const finishBtn = document.getElementById('finishBtn');
             
-            // زر السابق
             if (currentQuestionIndex === 0) {
                 prevBtn.style.display = 'none';
             } else {
                 prevBtn.style.display = 'inline-flex';
             }
             
-            // زر التالي وزر الإنهاء
             if (currentQuestionIndex === currentTest.questions.length - 1) {
                 nextBtn.style.display = 'none';
                 finishBtn.style.display = 'inline-flex';
@@ -1475,43 +1520,81 @@
             }
         }
         
-        // الانتقال إلى السؤال السابق
         function previousQuestion() {
             if (currentQuestionIndex > 0) {
                 currentQuestionIndex--;
                 displayQuestion(currentQuestionIndex);
+                updateQuestionProgress();
             }
         }
         
-        // الانتقال إلى السؤال التالي
         function nextQuestion() {
             if (currentQuestionIndex < currentTest.questions.length - 1) {
                 currentQuestionIndex++;
                 displayQuestion(currentQuestionIndex);
+                updateQuestionProgress();
             }
         }
         
-        // إنهاء الاختبار
+        function validateAndFinishTest() {
+            const unansweredQuestions = [];
+            
+            studentAnswers.forEach((answer, index) => {
+                const question = currentTest.questions[index];
+                
+                if (question.type === 'mcq') {
+                    if (answer === null || answer === undefined) {
+                        unansweredQuestions.push(index + 1);
+                    }
+                } else {
+                    if (!answer || (!answer.text && !answer.drawing)) {
+                        unansweredQuestions.push(index + 1);
+                    }
+                }
+            });
+            
+            if (unansweredQuestions.length > 0) {
+                document.getElementById('submitValidation').style.display = 'block';
+                
+                const unansweredList = document.getElementById('unansweredList');
+                unansweredList.innerHTML = '';
+                
+                unansweredQuestions.forEach(questionNumber => {
+                    const li = document.createElement('li');
+                    li.textContent = `سؤال رقم ${questionNumber}`;
+                    li.onclick = function() {
+                        goToQuestion(questionNumber - 1);
+                        document.getElementById('submitValidation').style.display = 'none';
+                    };
+                    li.style.cursor = 'pointer';
+                    li.style.transition = 'background 0.3s';
+                    li.onmouseover = function() {
+                        this.style.background = '#f0f0f0';
+                    };
+                    li.onmouseout = function() {
+                        this.style.background = 'white';
+                    };
+                    unansweredList.appendChild(li);
+                });
+                
+                showAlert('يجب الإجابة على جميع الأسئلة قبل إنهاء الاختبار', 'warning');
+                return;
+            }
+            
+            document.getElementById('submitValidation').style.display = 'none';
+            finishTest();
+        }
+        
         function finishTest() {
             if (timerInterval) {
                 clearInterval(timerInterval);
                 timerInterval = null;
             }
             
-            // التحقق من الإجابات الفارغة
-            const unanswered = studentAnswers.filter(answer => answer === null || (typeof answer === 'object' && !answer.text && !answer.drawing)).length;
-            
-            if (unanswered > 0 && !confirm(`لديك ${unanswered} سؤال بدون إجابة. هل تريد إنهاء الاختبار؟`)) {
-                return;
-            }
-            
-            // حساب النتيجة
             const result = calculateResults();
             
-            // حفظ النتيجة
             saveResults(result);
             
-            // عرض تفاصيل الاختبار
             const detailsContainer = document.getElementById('testDetails');
             detailsContainer.innerHTML = `
                 <div>
@@ -1528,23 +1611,18 @@
                 </div>
             `;
             
-            // الانتقال إلى شاشة الإكمال
             showCompletionSection();
             
-            // تنظيف البيانات المؤقتة
             localStorage.removeItem('temp_test_data');
         }
         
-        // حساب النتائج
         function calculateResults() {
             let score = 0;
             let total = 0;
             
-            // حساب الأسئلة المقالية (يتم تصحيحها يدوياً من المعلم)
             currentTest.questions.forEach((question, index) => {
                 total += question.points;
                 
-                // فقط أسئلة الاختيار من متعدد يتم تصحيحها تلقائياً
                 if (question.type === 'mcq' && studentAnswers[index] === question.correctAnswer) {
                     score += question.points;
                 }
@@ -1561,7 +1639,6 @@
             };
         }
         
-        // حفظ النتائج
         function saveResults(result) {
             const results = JSON.parse(localStorage.getItem('student_results')) || [];
             const teacherResults = JSON.parse(localStorage.getItem('teacher_results')) || [];
@@ -1582,22 +1659,18 @@
                 startTime: new Date(Date.now() - (currentTest.duration * 60000) + (timeRemaining * 1000)).toISOString(),
                 completedAt: new Date().toISOString(),
                 duration: currentTest.duration,
-                // بالنسبة للأسئلة المقالية، يحتاج المعلم لتصحيحها يدوياً
                 needsManualGrading: currentTest.questions.some((q, i) => q.type === 'essay' && studentAnswers[i])
             };
             
-            // حفظ في نتائج الطالب
             results.push(studentResult);
             localStorage.setItem('student_results', JSON.stringify(results));
             
-            // حفظ في نتائج المعلم
             teacherResults.push(studentResult);
             localStorage.setItem('teacher_results', JSON.stringify(teacherResults));
             
             return studentResult;
         }
         
-        // إعادة الاختبار
         function restartTest() {
             selectedTest = null;
             currentTest = null;
@@ -1608,7 +1681,6 @@
             showTestsSection();
         }
         
-        // إظهار رسالة تنبيه
         function showAlert(message, type = 'info') {
             const alertDiv = document.getElementById('alertMessage');
             alertDiv.textContent = message;
