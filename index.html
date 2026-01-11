@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>منصة الاختبارات الإلكترونية - الطالب</title>
+    <title>منصة الاختبارات الإلكترونية - الطالب مع Firebase</title>
     <style>
         * {
             box-sizing: border-box;
@@ -644,6 +644,29 @@
             border-right: 3px solid #ffc107;
         }
         
+        .firebase-status {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 20px;
+            font-size: 14px;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .firebase-status.connected {
+            background: rgba(40, 167, 69, 0.8);
+        }
+        
+        .firebase-status.disconnected {
+            background: rgba(220, 53, 69, 0.8);
+        }
+        
         @media (max-width: 768px) {
             .test-header {
                 padding: 20px;
@@ -696,6 +719,14 @@
                 height: 30px;
                 font-size: 14px;
             }
+            
+            .firebase-status {
+                bottom: 10px;
+                left: 10px;
+                right: 10px;
+                text-align: center;
+                justify-content: center;
+            }
         }
         
         @media (max-width: 480px) {
@@ -717,12 +748,18 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body>
+    <!-- حالة الاتصال بـ Firebase -->
+    <div id="firebaseStatus" class="firebase-status">
+        <i class="fas fa-plug"></i>
+        <span>جاري الاتصال بـ Firebase...</span>
+    </div>
+    
     <div class="container">
         <div class="test-header">
             <div class="header-top">
                 <div class="logo">
                     <i class="fas fa-user-graduate"></i>
-                    <h1>منصة الاختبارات الإلكترونية</h1>
+                    <h1>منصة الاختبارات الإلكترونية مع Firebase</h1>
                 </div>
                 <div class="student-info" id="studentInfoHeader" style="display: none;">
                     <div class="student-info-item">
@@ -774,6 +811,8 @@
                         <button onclick="login()" class="btn btn-primary" id="loginBtn" style="width: 100%;">
                             <i class="fas fa-sign-in-alt"></i> دخول إلى المنصة
                         </button>
+                        
+                        <div id="loginStatus" style="margin-top: 20px; text-align: center;"></div>
                         
                         <p style="color: #888; font-size: 14px; margin-top: 25px; text-align: center;">
                             <i class="fas fa-info-circle"></i> يجب أن يكون رقم السجل المدني مسجلاً لدى المعلم
@@ -880,7 +919,29 @@
         </div>
     </div>
 
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+
     <script>
+        // ========== إعداد Firebase ==========
+        const firebaseConfig = {
+            apiKey: "AIzaSyAYMb0gkHb44Qjy05OJrj0AMpXHXAMx7mU",
+            authDomain: "m1t1-1b066.firebaseapp.com",
+            projectId: "m1t1-1b066",
+            storageBucket: "m1t1-1b066.firebasestorage.app",
+            messagingSenderId: "882725081382",
+            appId: "1:882725081382:web:4ed556cc7c3f51c52231e7",
+            measurementId: "G-ZMNWTL2WY8"
+        };
+
+        // تهيئة Firebase
+        const app = firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+        
+        // متغيرات النظام
         let currentStudent = null;
         let currentTest = null;
         let selectedTest = null;
@@ -891,6 +952,7 @@
         let totalTestTime = 0;
         let testsList = [];
         
+        // متغيرات الرسم
         let drawingCanvas = null;
         let drawingContext = null;
         let isDrawing = false;
@@ -900,9 +962,12 @@
         let lastX = 0;
         let lastY = 0;
         
+        // ========== تهيئة الصفحة ==========
         document.addEventListener('DOMContentLoaded', function() {
-            loadTests();
+            // تهيئة Firebase
+            initializeFirebase();
             
+            // إعداد حقول الإدخال
             const ssnInput = document.getElementById('studentSsn');
             ssnInput.addEventListener('keypress', function(e) {
                 if (e.key === 'Enter') {
@@ -913,43 +978,59 @@
             ssnInput.addEventListener('input', function() {
                 this.value = this.value.replace(/[^0-9]/g, '');
             });
-            
-            updateHeaderInfo();
         });
         
-        function updateHeaderInfo() {
-            const teacherData = {
-                country: localStorage.getItem('teacher_country') || 'المملكة العربية السعودية',
-                administration: localStorage.getItem('teacher_administration') || 'إدارة التعليم',
-                school: localStorage.getItem('teacher_school') || 'مدرسة النموذجية',
-                subject: localStorage.getItem('teacher_subject') || 'الرياضيات'
-            };
-            
-            document.getElementById('countryHeader').textContent = teacherData.country;
-            document.getElementById('administrationHeader').textContent = teacherData.administration;
-            document.getElementById('schoolHeader').textContent = teacherData.school;
-            document.getElementById('subjectHeader').textContent = teacherData.subject;
+        // تهيئة Firebase
+        async function initializeFirebase() {
+            try {
+                updateFirebaseStatus('جاري الاتصال...', false);
+                
+                // محاولة تسجيل الدخول مجهولاً
+                await auth.signInAnonymously();
+                
+                updateFirebaseStatus('متصل بـ Firebase', true);
+                
+                // تحميل بيانات الرأس
+                loadHeaderData();
+                
+            } catch (error) {
+                console.error('خطأ في الاتصال بـ Firebase:', error);
+                updateFirebaseStatus('خطأ في الاتصال', false);
+                showAlert('❌ خطأ في الاتصال بـ Firebase. تحقق من اتصال الإنترنت', 'error');
+            }
         }
         
-        function saveHeaderInfo() {
-            const country = document.getElementById('country')?.value || 'المملكة العربية السعودية';
-            const administration = document.getElementById('administration')?.value || 'إدارة التعليم';
-            const school = document.getElementById('school')?.value || 'مدرسة النموذجية';
-            const subject = document.getElementById('subject')?.value || 'الرياضيات';
-            
-            localStorage.setItem('teacher_country', country);
-            localStorage.setItem('teacher_administration', administration);
-            localStorage.setItem('teacher_school', school);
-            localStorage.setItem('teacher_subject', subject);
+        // تحديث حالة الاتصال
+        function updateFirebaseStatus(message, connected) {
+            const statusElement = document.getElementById('firebaseStatus');
+            statusElement.innerHTML = `<i class="fas fa-${connected ? 'check-circle' : 'exclamation-circle'}"></i> <span>${message}</span>`;
+            statusElement.className = `firebase-status ${connected ? 'connected' : 'disconnected'}`;
         }
         
-        function loadTests() {
-            testsList = JSON.parse(localStorage.getItem('teacher_tests')) || [];
+        // تحميل بيانات الرأس
+        async function loadHeaderData() {
+            try {
+                // جلب إعدادات المعلم (نأخذ الأول المتاح)
+                const settingsSnapshot = await db.collection('teacherSettings').limit(1).get();
+                
+                if (!settingsSnapshot.empty) {
+                    const settings = settingsSnapshot.docs[0].data();
+                    
+                    document.getElementById('countryHeader').textContent = settings.country || 'المملكة العربية السعودية';
+                    document.getElementById('administrationHeader').textContent = settings.administration || 'إدارة التعليم';
+                    document.getElementById('schoolHeader').textContent = settings.school || 'مدرسة النموذجية';
+                    document.getElementById('subjectHeader').textContent = settings.subject || 'الرياضيات';
+                }
+            } catch (error) {
+                console.error('خطأ في تحميل بيانات الرأس:', error);
+            }
         }
         
-        function login() {
+        // ========== تسجيل الدخول ==========
+        async function login() {
             const ssn = document.getElementById('studentSsn').value.trim();
             const loginBtn = document.getElementById('loginBtn');
+            const loginStatus = document.getElementById('loginStatus');
             
             if (!ssn) {
                 showAlert('يرجى إدخال رقم السجل المدني', 'error');
@@ -962,32 +1043,100 @@
             }
             
             const originalContent = loginBtn.innerHTML;
-            loginBtn.innerHTML = '<span class="loading"></span> جاري التحقق...';
+            loginBtn.innerHTML = '<span class="loading"></span> جاري التحقق من Firebase...';
             loginBtn.disabled = true;
+            loginStatus.innerHTML = '<p style="color: #4a6fa5;"><i class="fas fa-sync-alt spinning"></i> جاري البحث عن بيانات الطالب...</p>';
             
-            setTimeout(() => {
-                const studentsList = JSON.parse(localStorage.getItem('teacher_students')) || [];
+            try {
+                // البحث عن الطالب في Firebase
+                const studentsSnapshot = await db.collection('students')
+                    .where('ssn', '==', ssn)
+                    .limit(1)
+                    .get();
                 
-                currentStudent = studentsList.find(student => student.ssn === ssn);
-                
-                if (currentStudent) {
+                if (studentsSnapshot.empty) {
+                    showAlert('رقم السجل المدني غير مسجل. يرجى التواصل مع المعلم', 'error');
+                    loginStatus.innerHTML = '<p style="color: #dc3545;"><i class="fas fa-times-circle"></i> الرقم غير مسجل</p>';
+                } else {
+                    const studentDoc = studentsSnapshot.docs[0];
+                    currentStudent = {
+                        id: studentDoc.id,
+                        ...studentDoc.data()
+                    };
+                    
+                    // حفظ محلياً
                     localStorage.setItem('current_student', JSON.stringify(currentStudent));
                     
+                    // تحديث الهيدر
                     document.getElementById('studentNameHeader').textContent = currentStudent.name;
                     document.getElementById('studentSsnHeader').textContent = currentStudent.ssn;
                     document.getElementById('studentInfoHeader').style.display = 'flex';
                     document.getElementById('testInfoHeader').style.display = 'grid';
                     
+                    // تحميل الاختبارات
+                    await loadTestsFromFirebase();
+                    
+                    // الانتقال إلى صفحة الاختبارات
                     showTestsSection();
                     
-                    showAlert(`مرحباً ${currentStudent.name}!`, 'success');
-                } else {
-                    showAlert('رقم السجل المدني غير مسجل. يرجى التواصل مع المعلم', 'error');
+                    showAlert(`✅ مرحباً ${currentStudent.name}!`, 'success');
+                    loginStatus.innerHTML = `<p style="color: #28a745;"><i class="fas fa-check-circle"></i> تم تسجيل الدخول بنجاح</p>`;
                 }
                 
+            } catch (error) {
+                console.error('خطأ في تسجيل الدخول:', error);
+                showAlert('❌ حدث خطأ في الاتصال بقاعدة البيانات', 'error');
+                loginStatus.innerHTML = '<p style="color: #dc3545;"><i class="fas fa-times-circle"></i> خطأ في الاتصال</p>';
+            } finally {
                 loginBtn.innerHTML = originalContent;
                 loginBtn.disabled = false;
-            }, 1000);
+            }
+        }
+        
+        // تحميل الاختبارات من Firebase
+        async function loadTestsFromFirebase() {
+            try {
+                const now = new Date();
+                
+                // جلب الاختبارات المنشورة والنشطة
+                const testsSnapshot = await db.collection('tests')
+                    .where('isPublished', '==', true)
+                    .get();
+                
+                testsList = [];
+                testsSnapshot.forEach(doc => {
+                    const test = { id: doc.id, ...doc.data() };
+                    
+                    // التحقق من أن الاختبار ضمن الوقت المسموح
+                    const start = new Date(test.startTime);
+                    const end = new Date(test.endTime);
+                    
+                    if (now >= start && now <= end) {
+                        testsList.push(test);
+                    }
+                });
+                
+                // تحميل النتائج للتحقق من الاختبارات المكتملة
+                if (currentStudent) {
+                    const resultsSnapshot = await db.collection('results')
+                        .where('studentSsn', '==', currentStudent.ssn)
+                        .get();
+                    
+                    const completedTests = new Set();
+                    resultsSnapshot.forEach(doc => {
+                        completedTests.add(doc.data().testId);
+                    });
+                    
+                    // وضع علامة على الاختبارات المكتملة
+                    testsList.forEach(test => {
+                        test.completed = completedTests.has(test.id);
+                    });
+                }
+                
+            } catch (error) {
+                console.error('خطأ في تحميل الاختبارات:', error);
+                showAlert('❌ حدث خطأ في تحميل الاختبارات', 'error');
+            }
         }
         
         function logout() {
@@ -1004,6 +1153,7 @@
             }
         }
         
+        // ========== إدارة الأقسام ==========
         function showLoginSection() {
             hideAllSections();
             document.getElementById('loginSection').classList.add('active');
@@ -1033,20 +1183,12 @@
             });
         }
         
+        // عرض الاختبارات المتاحة
         function displayAvailableTests() {
             const container = document.getElementById('availableTests');
             const noTestsMessage = document.getElementById('noTestsMessage');
             
-            const publishedTests = testsList.filter(test => test.isPublished);
-            
-            const now = new Date();
-            const availableTests = publishedTests.filter(test => {
-                const start = new Date(test.startTime);
-                const end = new Date(test.endTime);
-                return now >= start && now <= end;
-            });
-            
-            if (availableTests.length === 0) {
+            if (testsList.length === 0) {
                 container.style.display = 'none';
                 noTestsMessage.style.display = 'block';
                 return;
@@ -1057,35 +1199,30 @@
             
             let html = '';
             
-            availableTests.forEach((test, index) => {
-                const results = JSON.parse(localStorage.getItem('student_results')) || [];
-                const hasTakenTest = results.some(result => 
-                    result.studentSsn === currentStudent.ssn && result.testId === test.id
-                );
-                
+            testsList.forEach((test, index) => {
                 const startTime = new Date(test.startTime);
                 const endTime = new Date(test.endTime);
                 
                 html += `
-                    <div class="test-card" onclick="${hasTakenTest ? '' : `selectTest(${index})`}" 
-                         style="${hasTakenTest ? 'opacity: 0.7; cursor: not-allowed;' : ''}">
+                    <div class="test-card" onclick="${test.completed ? '' : `selectTest('${test.id}')`}" 
+                         style="${test.completed ? 'opacity: 0.7; cursor: not-allowed;' : ''}">
                         <h3>${test.title}</h3>
                         <div class="test-meta">
                             <p><i class="fas fa-book"></i> المادة: ${test.subject}</p>
                             <p><i class="fas fa-clock"></i> المدة: ${test.duration} دقيقة</p>
-                            <p><i class="fas fa-question-circle"></i> الأسئلة: ${test.questions.length}</p>
+                            <p><i class="fas fa-question-circle"></i> الأسئلة: ${test.questions ? test.questions.length : 0}</p>
                             <p><i class="fas fa-graduation-cap"></i> النجاح: ${test.passingScore}%</p>
                             <p><i class="fas fa-calendar-alt"></i> يبدأ: ${startTime.toLocaleString('ar-SA')}</p>
                             <p><i class="fas fa-calendar-times"></i> ينتهي: ${endTime.toLocaleString('ar-SA')}</p>
-                            ${hasTakenTest ? 
+                            ${test.completed ? 
                                 '<p><i class="fas fa-check-circle" style="color: #28a745;"></i> مكتمل</p>' : 
                                 '<p><i class="fas fa-hourglass-start" style="color: #4a6fa5;"></i> متاح</p>'
                             }
                         </div>
-                        <button onclick="event.stopPropagation(); selectTest(${index})" 
+                        <button onclick="event.stopPropagation(); selectTest('${test.id}')" 
                                 class="btn btn-primary" style="width: 100%; margin-top: 15px;"
-                                ${hasTakenTest ? 'disabled style="opacity: 0.5;"' : ''}>
-                            ${hasTakenTest ? 
+                                ${test.completed ? 'disabled style="opacity: 0.5;"' : ''}>
+                            ${test.completed ? 
                                 '<i class="fas fa-check"></i> مكتمل' : 
                                 '<i class="fas fa-play"></i> بدء الاختبار'
                             }
@@ -1097,91 +1234,107 @@
             container.innerHTML = html;
         }
         
-        function selectTest(index) {
-            const publishedTests = testsList.filter(test => test.isPublished);
-            const now = new Date();
-            const availableTests = publishedTests.filter(test => {
+        // اختيار اختبار
+        async function selectTest(testId) {
+            try {
+                const test = testsList.find(t => t.id === testId);
+                
+                if (!test) {
+                    showAlert('الاختبار غير متاح', 'error');
+                    return;
+                }
+                
+                // التحقق من الوقت
                 const start = new Date(test.startTime);
                 const end = new Date(test.endTime);
-                return now >= start && now <= end;
-            });
-            
-            if (index >= availableTests.length) {
-                showAlert('الاختبار غير متاح', 'error');
-                return;
+                const now = new Date();
+                
+                if (now < start) {
+                    showAlert('لم يحن وقت بدء الاختبار بعد', 'error');
+                    return;
+                }
+                
+                if (now > end) {
+                    showAlert('انتهى وقت الاختبار', 'error');
+                    return;
+                }
+                
+                // التحقق من أن الطالب لم يكمل الاختبار مسبقاً
+                if (test.completed) {
+                    showAlert('لقد قمت بأداء هذا الاختبار مسبقاً', 'warning');
+                    return;
+                }
+                
+                selectedTest = test;
+                currentTest = { ...test };
+                
+                document.getElementById('subjectHeader').textContent = currentTest.subject;
+                
+                await startTest();
+                
+            } catch (error) {
+                console.error('خطأ في اختيار الاختبار:', error);
+                showAlert('❌ حدث خطأ في بدء الاختبار', 'error');
             }
-            
-            const test = availableTests[index];
-            
-            const start = new Date(test.startTime);
-            const end = new Date(test.endTime);
-            const nowTime = new Date();
-            
-            if (nowTime < start) {
-                showAlert('لم يحن وقت بدء الاختبار بعد', 'error');
-                return;
-            }
-            
-            if (nowTime > end) {
-                showAlert('انتهى وقت الاختبار', 'error');
-                return;
-            }
-            
-            const results = JSON.parse(localStorage.getItem('student_results')) || [];
-            const hasTakenTest = results.some(result => 
-                result.studentSsn === currentStudent.ssn && result.testId === test.id
-            );
-            
-            if (hasTakenTest) {
-                showAlert('لقد قمت بأداء هذا الاختبار مسبقاً', 'warning');
-                return;
-            }
-            
-            selectedTest = {...test};
-            currentTest = selectedTest;
-            
-            document.getElementById('subjectHeader').textContent = currentTest.subject;
-            
-            startTest();
         }
         
-        function startTest() {
+        // بدء الاختبار
+        async function startTest() {
             if (!currentTest) {
                 showAlert('لم يتم اختيار اختبار', 'error');
                 return;
             }
             
-            studentAnswers = new Array(currentTest.questions.length).fill(null);
-            currentQuestionIndex = 0;
-            
-            const now = new Date();
-            const endTime = new Date(currentTest.endTime);
-            
-            timeRemaining = Math.floor((endTime - now) / 1000);
-            totalTestTime = timeRemaining;
-            
-            if (timeRemaining > currentTest.duration * 60) {
-                timeRemaining = currentTest.duration * 60;
-                totalTestTime = timeRemaining;
+            try {
+                // التحقق مرة أخرى من أن الطالب لم يكمل الاختبار
+                const resultCheck = await db.collection('results')
+                    .where('testId', '==', currentTest.id)
+                    .where('studentSsn', '==', currentStudent.ssn)
+                    .limit(1)
+                    .get();
+                
+                if (!resultCheck.empty) {
+                    showAlert('لقد قمت بأداء هذا الاختبار مسبقاً', 'warning');
+                    return;
+                }
+                
+                // تهيئة الإجابات
+                studentAnswers = new Array(currentTest.questions.length).fill(null);
+                currentQuestionIndex = 0;
+                
+                // حساب الوقت المتبقي
+                const now = new Date();
+                const endTime = new Date(currentTest.endTime);
+                
+                timeRemaining = Math.floor((endTime - now) / 1000);
+                totalTestTime = Math.min(timeRemaining, currentTest.duration * 60);
+                timeRemaining = totalTestTime;
+                
+                if (timeRemaining <= 0) {
+                    showAlert('انتهى وقت الاختبار', 'error');
+                    return;
+                }
+                
+                // تحديث العداد
+                updateTimerDisplay();
+                document.getElementById('timerContainer').style.display = 'block';
+                
+                // بدء المؤقت
+                if (timerInterval) clearInterval(timerInterval);
+                timerInterval = setInterval(updateTimer, 1000);
+                
+                // عرض الاختبار
+                showTestSection();
+                displayQuestion(currentQuestionIndex);
+                updateQuestionProgress();
+                
+            } catch (error) {
+                console.error('خطأ في بدء الاختبار:', error);
+                showAlert('❌ حدث خطأ في بدء الاختبار', 'error');
             }
-            
-            if (timeRemaining <= 0) {
-                showAlert('انتهى وقت الاختبار', 'error');
-                return;
-            }
-            
-            updateTimerDisplay();
-            
-            document.getElementById('timerContainer').style.display = 'block';
-            
-            if (timerInterval) clearInterval(timerInterval);
-            timerInterval = setInterval(updateTimer, 1000);
-            
-            showTestSection();
-            displayQuestion(currentQuestionIndex);
-            updateQuestionProgress();
         }
         
+        // تحديث المؤقت
         function updateTimer() {
             timeRemaining--;
             updateTimerDisplay();
@@ -1212,6 +1365,7 @@
                 `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
         }
         
+        // تحديث تقدم الأسئلة
         function updateQuestionProgress() {
             const container = document.getElementById('questionProgress');
             if (!container) return;
@@ -1249,6 +1403,7 @@
             }
         }
         
+        // عرض السؤال
         function displayQuestion(index) {
             if (!currentTest || index >= currentTest.questions.length) {
                 return;
@@ -1334,6 +1489,7 @@
             updateNavigationButtons();
         }
         
+        // ========== نظام الرسم ==========
         function initializeDrawingCanvas(questionIndex) {
             drawingCanvas = document.getElementById('drawingCanvas');
             const container = drawingCanvas.parentElement;
@@ -1476,7 +1632,6 @@
                 studentAnswers[questionIndex] = {};
             }
             studentAnswers[questionIndex].drawing = drawingCanvas.toDataURL();
-            saveTemporaryAnswers();
             updateQuestionProgress();
         }
         
@@ -1485,7 +1640,6 @@
                 studentAnswers[questionIndex] = {};
             }
             studentAnswers[questionIndex].text = text;
-            saveTemporaryAnswers();
             updateQuestionProgress();
         }
         
@@ -1503,18 +1657,7 @@
                 }
             });
             
-            saveTemporaryAnswers();
             updateQuestionProgress();
-        }
-        
-        function saveTemporaryAnswers() {
-            const tempData = {
-                studentSsn: currentStudent.ssn,
-                testId: currentTest.id,
-                answers: studentAnswers,
-                timestamp: new Date().toISOString()
-            };
-            localStorage.setItem('temp_test_data', JSON.stringify(tempData));
         }
         
         function updateNavigationButtons() {
@@ -1553,6 +1696,7 @@
             }
         }
         
+        // التحقق وإنهاء الاختبار
         function validateAndFinishTest() {
             const unansweredQuestions = [];
             
@@ -1602,37 +1746,33 @@
             finishTest();
         }
         
-        function finishTest() {
-            if (timerInterval) {
-                clearInterval(timerInterval);
-                timerInterval = null;
+        // إنهاء الاختبار وحفظ النتائج في Firebase
+        async function finishTest() {
+            try {
+                if (timerInterval) {
+                    clearInterval(timerInterval);
+                    timerInterval = null;
+                }
+                
+                // إخفاء المؤقت
+                document.getElementById('timerContainer').style.display = 'none';
+                
+                // حساب النتائج
+                const result = calculateResults();
+                
+                // حفظ النتائج في Firebase
+                await saveResultsToFirebase(result);
+                
+                // عرض صفحة الإكمال
+                showCompletionPage(result);
+                
+            } catch (error) {
+                console.error('خطأ في إنهاء الاختبار:', error);
+                showAlert('❌ حدث خطأ في حفظ النتائج. حاول مرة أخرى', 'error');
             }
-            
-            const result = calculateResults();
-            
-            saveResults(result);
-            
-            const detailsContainer = document.getElementById('testDetails');
-            detailsContainer.innerHTML = `
-                <div>
-                    <p style="margin: 0; color: #2c3e50;"><strong>اسم الاختبار:</strong> ${currentTest.title}</p>
-                    <p style="margin: 5px 0 0; color: #2c3e50;"><strong>المادة:</strong> ${currentTest.subject}</p>
-                </div>
-                <div>
-                    <p style="margin: 0; color: #2c3e50;"><strong>تاريخ الإكمال:</strong> ${new Date().toLocaleString('ar-SA')}</p>
-                    <p style="margin: 5px 0 0; color: #2c3e50;"><strong>عدد الأسئلة:</strong> ${currentTest.questions.length}</p>
-                </div>
-                <div>
-                    <p style="margin: 0; color: #2c3e50;"><strong>الإجابات:</strong> ${studentAnswers.filter(a => a !== null).length} من ${currentTest.questions.length}</p>
-                    <p style="margin: 5px 0 0; color: #2c3e50;"><strong>زمن الاختبار:</strong> ${currentTest.duration} دقيقة</p>
-                </div>
-            `;
-            
-            showCompletionSection();
-            
-            localStorage.removeItem('temp_test_data');
         }
         
+        // حساب النتائج
         function calculateResults() {
             let score = 0;
             let total = 0;
@@ -1646,46 +1786,82 @@
             });
             
             const percentage = total > 0 ? Math.round((score / total) * 100) : 0;
+            const passed = percentage >= currentTest.passingScore;
             
             return {
-                score,
-                total,
-                percentage,
+                score: score,
+                total: total,
+                percentage: percentage,
+                passed: passed,
                 totalQuestions: currentTest.questions.length,
                 answeredQuestions: studentAnswers.filter(a => a !== null).length
             };
         }
         
-        function saveResults(result) {
-            const results = JSON.parse(localStorage.getItem('student_results')) || [];
-            const teacherResults = JSON.parse(localStorage.getItem('teacher_results')) || [];
+        // حفظ النتائج في Firebase
+        async function saveResultsToFirebase(result) {
+            try {
+                const resultId = 'RESULT-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+                
+                const resultData = {
+                    id: resultId,
+                    testId: currentTest.id,
+                    testTitle: currentTest.title,
+                    testSubject: currentTest.subject,
+                    studentId: currentStudent.id,
+                    studentSsn: currentStudent.ssn,
+                    studentName: currentStudent.name,
+                    score: result.score,
+                    total: result.total,
+                    percentage: result.percentage,
+                    passed: result.passed,
+                    answers: studentAnswers,
+                    totalQuestions: result.totalQuestions,
+                    answeredQuestions: result.answeredQuestions,
+                    startTime: new Date(Date.now() - (currentTest.duration * 60000) + (timeRemaining * 1000)).toISOString(),
+                    completedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    duration: currentTest.duration,
+                    needsManualGrading: currentTest.questions.some((q, i) => q.type === 'essay' && studentAnswers[i])
+                };
+                
+                // حفظ في Firebase
+                await db.collection('results').doc(resultId).set(resultData);
+                
+                return resultData;
+                
+            } catch (error) {
+                console.error('خطأ في حفظ النتائج:', error);
+                throw error;
+            }
+        }
+        
+        // عرض صفحة الإكمال
+        function showCompletionPage(result) {
+            const detailsContainer = document.getElementById('testDetails');
+            detailsContainer.innerHTML = `
+                <div>
+                    <p style="margin: 0; color: #2c3e50;"><strong>اسم الاختبار:</strong> ${currentTest.title}</p>
+                    <p style="margin: 5px 0 0; color: #2c3e50;"><strong>المادة:</strong> ${currentTest.subject}</p>
+                </div>
+                <div>
+                    <p style="margin: 0; color: #2c3e50;"><strong>تاريخ الإكمال:</strong> ${new Date().toLocaleString('ar-SA')}</p>
+                    <p style="margin: 5px 0 0; color: #2c3e50;"><strong>عدد الأسئلة:</strong> ${currentTest.questions.length}</p>
+                </div>
+                <div>
+                    <p style="margin: 0; color: #2c3e50;"><strong>الدرجة:</strong> ${result.score}/${result.total}</p>
+                    <p style="margin: 5px 0 0; color: #2c3e50;"><strong>النسبة:</strong> ${result.percentage}%</p>
+                </div>
+                <div>
+                    <p style="margin: 0; color: #2c3e50;"><strong>الحالة:</strong> 
+                        <span style="color: ${result.passed ? '#28a745' : '#dc3545'}; font-weight: bold;">
+                            ${result.passed ? 'ناجح ✓' : 'راسب ✗'}
+                        </span>
+                    </p>
+                    <p style="margin: 5px 0 0; color: #2c3e50;"><strong>زمن الاختبار:</strong> ${currentTest.duration} دقيقة</p>
+                </div>
+            `;
             
-            const studentResult = {
-                studentId: currentStudent.id,
-                studentSsn: currentStudent.ssn,
-                studentName: currentStudent.name,
-                testId: currentTest.id,
-                testTitle: currentTest.title,
-                testSubject: currentTest.subject,
-                score: result.score,
-                total: result.total,
-                percentage: result.percentage,
-                answers: studentAnswers,
-                totalQuestions: result.totalQuestions,
-                answeredQuestions: result.answeredQuestions,
-                startTime: new Date(Date.now() - (currentTest.duration * 60000) + (timeRemaining * 1000)).toISOString(),
-                completedAt: new Date().toISOString(),
-                duration: currentTest.duration,
-                needsManualGrading: currentTest.questions.some((q, i) => q.type === 'essay' && studentAnswers[i])
-            };
-            
-            results.push(studentResult);
-            localStorage.setItem('student_results', JSON.stringify(results));
-            
-            teacherResults.push(studentResult);
-            localStorage.setItem('teacher_results', JSON.stringify(teacherResults));
-            
-            return studentResult;
+            showCompletionSection();
         }
         
         function restartTest() {
@@ -1695,9 +1871,13 @@
             studentAnswers = [];
             timeRemaining = 0;
             
-            showTestsSection();
+            // إعادة تحميل الاختبارات
+            loadTestsFromFirebase().then(() => {
+                showTestsSection();
+            });
         }
         
+        // إظهار رسالة تنبيه
         function showAlert(message, type = 'info') {
             const alertDiv = document.getElementById('alertMessage');
             alertDiv.textContent = message;
@@ -1708,6 +1888,19 @@
                 alertDiv.style.display = 'none';
             }, 5000);
         }
+        
+        // إضافة style للدوران
+        const style = document.createElement('style');
+        style.textContent = `
+            .spinning {
+                animation: spin 1s linear infinite;
+            }
+            @keyframes spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+            }
+        `;
+        document.head.appendChild(style);
     </script>
 </body>
 </html>
