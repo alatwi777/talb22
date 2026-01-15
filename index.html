@@ -4,11 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>منصة الاختبارات الإلكترونية - الطالب</title>
-    
-    <!-- إضافة Firebase SDK -->
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
-    
     <style>
         * {
             box-sizing: border-box;
@@ -886,23 +881,6 @@
     </div>
 
     <script>
-        // ============================================
-        // تهيئة Firebase
-        // ============================================
-        const firebaseConfig = {
-            apiKey: "AIzaSyBGM5RC1JByNmImbjHYaDpPbPuvMeMm2KM",
-            authDomain: "molm-a8a5c.firebaseapp.com",
-            projectId: "molm-a8a5c",
-            storageBucket: "molm-a8a5c.firebasestorage.app",
-            messagingSenderId: "142771291378",
-            appId: "1:142771291378:web:1d7655600df7d0cdccbc6b",
-            measurementId: "G-7HZVREBZ0N"
-        };
-        
-        // تهيئة Firebase
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.firestore();
-        
         let currentStudent = null;
         let currentTest = null;
         let selectedTest = null;
@@ -923,7 +901,7 @@
         let lastY = 0;
         
         document.addEventListener('DOMContentLoaded', function() {
-            updateHeaderInfo();
+            loadTests();
             
             const ssnInput = document.getElementById('studentSsn');
             ssnInput.addEventListener('keypress', function(e) {
@@ -936,18 +914,7 @@
                 this.value = this.value.replace(/[^0-9]/g, '');
             });
             
-            // تحميل بيانات المعلم من localStorage
-            const teacherData = {
-                country: localStorage.getItem('teacher_country') || 'المملكة العربية السعودية',
-                administration: localStorage.getItem('teacher_administration') || 'إدارة التعليم',
-                school: localStorage.getItem('teacher_school') || 'مدرسة النموذجية',
-                subject: localStorage.getItem('teacher_subject') || 'الرياضيات'
-            };
-            
-            document.getElementById('countryHeader').textContent = teacherData.country;
-            document.getElementById('administrationHeader').textContent = teacherData.administration;
-            document.getElementById('schoolHeader').textContent = teacherData.school;
-            document.getElementById('subjectHeader').textContent = teacherData.subject;
+            updateHeaderInfo();
         });
         
         function updateHeaderInfo() {
@@ -964,24 +931,23 @@
             document.getElementById('subjectHeader').textContent = teacherData.subject;
         }
         
-        async function loadTests() {
-            try {
-                // تحميل الاختبارات المنشورة من Firebase
-                const testsSnapshot = await db.collection('tests')
-                    .where('isPublished', '==', true)
-                    .get();
-                
-                testsList = [];
-                testsSnapshot.forEach(doc => {
-                    testsList.push({ id: doc.id, ...doc.data() });
-                });
-            } catch (error) {
-                console.error('خطأ في تحميل الاختبارات:', error);
-                showAlert('حدث خطأ في تحميل الاختبارات', 'error');
-            }
+        function saveHeaderInfo() {
+            const country = document.getElementById('country')?.value || 'المملكة العربية السعودية';
+            const administration = document.getElementById('administration')?.value || 'إدارة التعليم';
+            const school = document.getElementById('school')?.value || 'مدرسة النموذجية';
+            const subject = document.getElementById('subject')?.value || 'الرياضيات';
+            
+            localStorage.setItem('teacher_country', country);
+            localStorage.setItem('teacher_administration', administration);
+            localStorage.setItem('teacher_school', school);
+            localStorage.setItem('teacher_subject', subject);
         }
         
-        async function login() {
+        function loadTests() {
+            testsList = JSON.parse(localStorage.getItem('teacher_tests')) || [];
+        }
+        
+        function login() {
             const ssn = document.getElementById('studentSsn').value.trim();
             const loginBtn = document.getElementById('loginBtn');
             
@@ -999,16 +965,12 @@
             loginBtn.innerHTML = '<span class="loading"></span> جاري التحقق...';
             loginBtn.disabled = true;
             
-            try {
-                // البحث عن الطالب في Firebase
-                const studentsSnapshot = await db.collection('students')
-                    .where('ssn', '==', ssn)
-                    .get();
+            setTimeout(() => {
+                const studentsList = JSON.parse(localStorage.getItem('teacher_students')) || [];
                 
-                if (!studentsSnapshot.empty) {
-                    const studentDoc = studentsSnapshot.docs[0];
-                    currentStudent = { id: studentDoc.id, ...studentDoc.data() };
-                    
+                currentStudent = studentsList.find(student => student.ssn === ssn);
+                
+                if (currentStudent) {
                     localStorage.setItem('current_student', JSON.stringify(currentStudent));
                     
                     document.getElementById('studentNameHeader').textContent = currentStudent.name;
@@ -1016,21 +978,16 @@
                     document.getElementById('studentInfoHeader').style.display = 'flex';
                     document.getElementById('testInfoHeader').style.display = 'grid';
                     
-                    // تحميل الاختبارات المتاحة
-                    await loadTests();
                     showTestsSection();
                     
                     showAlert(`مرحباً ${currentStudent.name}!`, 'success');
                 } else {
                     showAlert('رقم السجل المدني غير مسجل. يرجى التواصل مع المعلم', 'error');
                 }
-            } catch (error) {
-                console.error('خطأ في تسجيل الدخول:', error);
-                showAlert('حدث خطأ في تسجيل الدخول', 'error');
-            } finally {
+                
                 loginBtn.innerHTML = originalContent;
                 loginBtn.disabled = false;
-            }
+            }, 1000);
         }
         
         function logout() {
@@ -1076,12 +1033,14 @@
             });
         }
         
-        async function displayAvailableTests() {
+        function displayAvailableTests() {
             const container = document.getElementById('availableTests');
             const noTestsMessage = document.getElementById('noTestsMessage');
             
+            const publishedTests = testsList.filter(test => test.isPublished);
+            
             const now = new Date();
-            const availableTests = testsList.filter(test => {
+            const availableTests = publishedTests.filter(test => {
                 const start = new Date(test.startTime);
                 const end = new Date(test.endTime);
                 return now >= start && now <= end;
@@ -1098,24 +1057,17 @@
             
             let html = '';
             
-            // الحصول على نتائج الطالب من Firebase
-            const resultsSnapshot = await db.collection('results')
-                .where('studentSsn', '==', currentStudent.ssn)
-                .get();
-            
-            const studentResults = [];
-            resultsSnapshot.forEach(doc => {
-                studentResults.push(doc.data());
-            });
-            
             availableTests.forEach((test, index) => {
-                const hasTakenTest = studentResults.some(result => result.testId === test.id);
+                const results = JSON.parse(localStorage.getItem('student_results')) || [];
+                const hasTakenTest = results.some(result => 
+                    result.studentSsn === currentStudent.ssn && result.testId === test.id
+                );
                 
                 const startTime = new Date(test.startTime);
                 const endTime = new Date(test.endTime);
                 
                 html += `
-                    <div class="test-card" onclick="${hasTakenTest ? '' : `selectTest('${test.id}')`}" 
+                    <div class="test-card" onclick="${hasTakenTest ? '' : `selectTest(${index})`}" 
                          style="${hasTakenTest ? 'opacity: 0.7; cursor: not-allowed;' : ''}">
                         <h3>${test.title}</h3>
                         <div class="test-meta">
@@ -1130,7 +1082,7 @@
                                 '<p><i class="fas fa-hourglass-start" style="color: #4a6fa5;"></i> متاح</p>'
                             }
                         </div>
-                        <button onclick="event.stopPropagation(); selectTest('${test.id}')" 
+                        <button onclick="event.stopPropagation(); selectTest(${index})" 
                                 class="btn btn-primary" style="width: 100%; margin-top: 15px;"
                                 ${hasTakenTest ? 'disabled style="opacity: 0.5;"' : ''}>
                             ${hasTakenTest ? 
@@ -1145,50 +1097,52 @@
             container.innerHTML = html;
         }
         
-        async function selectTest(testId) {
-            try {
-                const test = testsList.find(t => t.id === testId);
-                if (!test) {
-                    showAlert('الاختبار غير موجود', 'error');
-                    return;
-                }
-                
+        function selectTest(index) {
+            const publishedTests = testsList.filter(test => test.isPublished);
+            const now = new Date();
+            const availableTests = publishedTests.filter(test => {
                 const start = new Date(test.startTime);
                 const end = new Date(test.endTime);
-                const nowTime = new Date();
-                
-                if (nowTime < start) {
-                    showAlert('لم يحن وقت بدء الاختبار بعد', 'error');
-                    return;
-                }
-                
-                if (nowTime > end) {
-                    showAlert('انتهى وقت الاختبار', 'error');
-                    return;
-                }
-                
-                // التحقق من أن الطالب لم يقم بأداء الاختبار مسبقاً
-                const resultsSnapshot = await db.collection('results')
-                    .where('studentSsn', '==', currentStudent.ssn)
-                    .where('testId', '==', testId)
-                    .get();
-                
-                if (!resultsSnapshot.empty) {
-                    showAlert('لقد قمت بأداء هذا الاختبار مسبقاً', 'warning');
-                    return;
-                }
-                
-                selectedTest = {...test};
-                currentTest = selectedTest;
-                
-                document.getElementById('subjectHeader').textContent = currentTest.subject;
-                
-                startTest();
-                
-            } catch (error) {
-                console.error('خطأ في اختيار الاختبار:', error);
-                showAlert('حدث خطأ في اختيار الاختبار', 'error');
+                return now >= start && now <= end;
+            });
+            
+            if (index >= availableTests.length) {
+                showAlert('الاختبار غير متاح', 'error');
+                return;
             }
+            
+            const test = availableTests[index];
+            
+            const start = new Date(test.startTime);
+            const end = new Date(test.endTime);
+            const nowTime = new Date();
+            
+            if (nowTime < start) {
+                showAlert('لم يحن وقت بدء الاختبار بعد', 'error');
+                return;
+            }
+            
+            if (nowTime > end) {
+                showAlert('انتهى وقت الاختبار', 'error');
+                return;
+            }
+            
+            const results = JSON.parse(localStorage.getItem('student_results')) || [];
+            const hasTakenTest = results.some(result => 
+                result.studentSsn === currentStudent.ssn && result.testId === test.id
+            );
+            
+            if (hasTakenTest) {
+                showAlert('لقد قمت بأداء هذا الاختبار مسبقاً', 'warning');
+                return;
+            }
+            
+            selectedTest = {...test};
+            currentTest = selectedTest;
+            
+            document.getElementById('subjectHeader').textContent = currentTest.subject;
+            
+            startTest();
         }
         
         function startTest() {
@@ -1648,7 +1602,7 @@
             finishTest();
         }
         
-        async function finishTest() {
+        function finishTest() {
             if (timerInterval) {
                 clearInterval(timerInterval);
                 timerInterval = null;
@@ -1656,7 +1610,7 @@
             
             const result = calculateResults();
             
-            await saveResults(result);
+            saveResults(result);
             
             const detailsContainer = document.getElementById('testDetails');
             detailsContainer.innerHTML = `
@@ -1692,57 +1646,46 @@
             });
             
             const percentage = total > 0 ? Math.round((score / total) * 100) : 0;
-            const passed = percentage >= currentTest.passingScore;
             
             return {
                 score,
                 total,
                 percentage,
-                passed,
                 totalQuestions: currentTest.questions.length,
                 answeredQuestions: studentAnswers.filter(a => a !== null).length
             };
         }
         
-        async function saveResults(result) {
-            try {
-                const resultId = 'RESULT-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-                
-                const studentResult = {
-                    id: resultId,
-                    studentId: currentStudent.id,
-                    studentSsn: currentStudent.ssn,
-                    studentName: currentStudent.name,
-                    testId: currentTest.id,
-                    testTitle: currentTest.title,
-                    testSubject: currentTest.subject,
-                    score: result.score,
-                    total: result.total,
-                    percentage: result.percentage,
-                    passed: result.passed,
-                    answers: studentAnswers,
-                    totalQuestions: result.totalQuestions,
-                    answeredQuestions: result.answeredQuestions,
-                    startTime: new Date(Date.now() - (currentTest.duration * 60000) + (timeRemaining * 1000)).toISOString(),
-                    completedAt: new Date().toISOString(),
-                    duration: currentTest.duration,
-                    needsManualGrading: currentTest.questions.some((q, i) => q.type === 'essay' && studentAnswers[i]),
-                    teacherId: currentTest.teacherId,
-                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                };
-                
-                // حفظ النتيجة في Firebase
-                await db.collection('results').doc(resultId).set(studentResult);
-                
-                showAlert('تم حفظ نتائج الاختبار بنجاح', 'success');
-                
-                return studentResult;
-                
-            } catch (error) {
-                console.error('خطأ في حفظ النتائج:', error);
-                showAlert('حدث خطأ في حفظ النتائج', 'error');
-                throw error;
-            }
+        function saveResults(result) {
+            const results = JSON.parse(localStorage.getItem('student_results')) || [];
+            const teacherResults = JSON.parse(localStorage.getItem('teacher_results')) || [];
+            
+            const studentResult = {
+                studentId: currentStudent.id,
+                studentSsn: currentStudent.ssn,
+                studentName: currentStudent.name,
+                testId: currentTest.id,
+                testTitle: currentTest.title,
+                testSubject: currentTest.subject,
+                score: result.score,
+                total: result.total,
+                percentage: result.percentage,
+                answers: studentAnswers,
+                totalQuestions: result.totalQuestions,
+                answeredQuestions: result.answeredQuestions,
+                startTime: new Date(Date.now() - (currentTest.duration * 60000) + (timeRemaining * 1000)).toISOString(),
+                completedAt: new Date().toISOString(),
+                duration: currentTest.duration,
+                needsManualGrading: currentTest.questions.some((q, i) => q.type === 'essay' && studentAnswers[i])
+            };
+            
+            results.push(studentResult);
+            localStorage.setItem('student_results', JSON.stringify(results));
+            
+            teacherResults.push(studentResult);
+            localStorage.setItem('teacher_results', JSON.stringify(teacherResults));
+            
+            return studentResult;
         }
         
         function restartTest() {
