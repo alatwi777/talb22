@@ -64,6 +64,9 @@ const API = "https://script.google.com/macros/s/AKfycbw6GJLmABLnLN3UNU9uIe_BJAI1
 document.getElementById("studentName").innerText = localStorage.getItem("studentName");
 document.getElementById("studentCivil").innerText = localStorage.getItem("studentCivil");
 
+// اختبار: هل examId موجود؟
+console.log("examId:", localStorage.getItem("examId"));
+
 // تحميل الأسئلة
 async function loadQuestions() {
     const examId = localStorage.getItem("examId");
