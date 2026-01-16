@@ -1,352 +1,122 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-    <meta charset="UTF-8">
-    <title>الاختبار</title>
-    <style>
-        body {
-            font-family: "Cairo", sans-serif;
-            background: #f7f7f7;
-            margin: 0;
-            padding: 0;
-        }
-
-        .container {
-            width: 95%;
-            max-width: 900px;
-            margin: 20px auto;
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 0 10px #ccc;
-        }
-
-        .question-box {
-            margin-bottom: 25px;
-            padding: 15px;
-            background: #fafafa;
-            border-radius: 8px;
-            border: 1px solid #ddd;
-        }
-
-        .question-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 10px;
-        }
-
-        .options label {
-            display: block;
-            padding: 8px;
-            background: #eee;
-            margin: 5px 0;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-
-        .btn {
-            padding: 12px 20px;
-            background: #3498db;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 16px;
-        }
-
-        #timer, #availability {
-            font-size: 18px;
-            font-weight: bold;
-            text-align: center;
-            margin-bottom: 10px;
-        }
-
-        #timer { color: #e74c3c; }
-        #availability { color: #16a085; }
-
-        canvas {
-            border: 1px solid #ccc;
-            border-radius: 8px;
-            width: 100%;
-            height: 250px;
-            touch-action: none;
-        }
-    </style>
+<meta charset="UTF-8">
+<title>الاختبار</title>
+<style>
+    body {
+        font-family: "Tajawal", sans-serif;
+        background: #f0f2f5;
+        padding: 20px;
+    }
+    .box {
+        background: white;
+        padding: 20px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+        box-shadow: 0 0 10px #ddd;
+    }
+    .question {
+        background: #fafafa;
+        padding: 15px;
+        border-radius: 8px;
+        margin-bottom: 15px;
+        border: 1px solid #ddd;
+    }
+    textarea {
+        width: 100%;
+        height: 120px;
+        padding: 10px;
+        border-radius: 6px;
+        border: 1px solid #ccc;
+    }
+    button {
+        background: #007bff;
+        color: white;
+        padding: 12px 20px;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 16px;
+    }
+    button:hover {
+        background: #0056b3;
+    }
+</style>
 </head>
-
 <body>
 
-<div class="container">
-    <h2>الاختبار</h2>
+<h2>📘 الاختبار</h2>
 
-    <h3>الطالب: <span id="studentNameBox"></span></h3>
-    <h4>السجل المدني: <span id="studentCivilBox"></span></h4>
-
-    <h3 id="testTitle"></h3>
-    <h4 id="testTime"></h4>
-
-    <div id="availability"></div>
-    <div id="timer"></div>
-
-    <div id="questionContainer"></div>
-
-    <button class="btn" onclick="submitExam()">إنهاء الاختبار</button>
+<div class="box">
+    <strong>اسم الطالب:</strong> <span id="studentName"></span><br>
+    <strong>السجل المدني:</strong> <span id="studentCivil"></span>
 </div>
 
+<div id="questionsContainer"></div>
+
+<button onclick="submitExam()">📤 إرسال الإجابات</button>
+
 <script>
-    // -----------------------------
-    // 1) بيانات الطالب
-    // -----------------------------
-    const studentName = localStorage.getItem("studentName");
-    const studentCivil = localStorage.getItem("studentCivil");
+const API = "ضع رابط السكربت هنا";
 
-    document.getElementById("studentNameBox").textContent = studentName || "غير معروف";
-    document.getElementById("studentCivilBox").textContent = studentCivil || "غير معروف";
+// تحميل بيانات الطالب
+document.getElementById("studentName").innerText = localStorage.getItem("studentName");
+document.getElementById("studentCivil").innerText = localStorage.getItem("studentCivil");
 
-    // -----------------------------
-    // 2) بيانات الاختبار (مؤقتًا)
-    // -----------------------------
-    const test = {
-        title: "اختبار تجريبي",
-        startTime: "2026-01-16T15:00:00",
-        endTime:   "2026-01-16T17:00:00",
-        durationMinutes: 20,
-        questions: [
-            {
-                id: 1,
-                type: "mcq",
-                title: "ما عاصمة المملكة العربية السعودية؟",
-                options: ["الرياض", "جدة", "مكة", "الدمام"],
-                score: 5
-            },
-            {
-                id: 2,
-                type: "mcq",
-                title: "كم عدد أركان الإسلام؟",
-                options: ["3", "4", "5", "6"],
-                score: 5
-            },
-            {
-                id: 3,
-                type: "essay_hand",
-                title: "اكتب بخط يدك تعريف الصلاة وأهميتها.",
-                score: 10
-            }
-        ]
-    };
+// تحميل الأسئلة
+async function loadQuestions() {
+    const examId = localStorage.getItem("examId");
 
-    document.getElementById("testTitle").textContent = test.title;
-    document.getElementById("testTime").textContent =
-        `من ${test.startTime} إلى ${test.endTime}`;
+    const response = await fetch(`${API}?action=getQuestions&examId=${examId}`);
+    const questions = await response.json();
 
-    let answers = {};
-    let essayCanvas, essayCtx, drawing = false;
-    let timeLeft;
+    displayQuestions(questions);
+}
 
-    // -----------------------------
-    // 3) التحقق من وقت الاختبار
-    // -----------------------------
-    function checkAvailability() {
-        const now = new Date();
-        const start = new Date(test.startTime);
-        const end = new Date(test.endTime);
-        const availabilityDiv = document.getElementById("availability");
+// عرض الأسئلة
+function displayQuestions(questions) {
+    const container = document.getElementById("questionsContainer");
+    container.innerHTML = "";
 
-        if (now < start) {
-            availabilityDiv.textContent = "الاختبار لم يبدأ بعد.";
-            disableExam();
-            return false;
-        }
+    questions.forEach(q => {
+        let html = `<div class="question">
+            <strong>سؤال ${q.questionId}:</strong> ${q.title}<br><br>`;
 
-        if (now > end) {
-            availabilityDiv.textContent = "انتهى وقت الاختبار.";
-            disableExam();
-            return false;
-        }
-
-        availabilityDiv.textContent = "الاختبار متاح الآن.";
-        return true;
-    }
-
-    function disableExam() {
-        document.getElementById("questionContainer").innerHTML = "";
-        document.querySelector("button.btn").disabled = true;
-    }
-
-    // -----------------------------
-    // 4) عرض الأسئلة
-    // -----------------------------
-    function loadQuestions() {
-        const container = document.getElementById("questionContainer");
-        container.innerHTML = "";
-
-        test.questions.forEach((q, index) => {
-            let html = `
-                <div class="question-box">
-                    <div class="question-header">
-                        <h3>سؤال ${index + 1}: ${q.title}</h3>
-                        <span>الدرجة: ${q.score}</span>
-                    </div>
-            `;
-
-            if (q.type === "mcq") {
-                html += `<div class="options">`;
-                q.options.forEach((opt, i) => {
-                    html += `
-                        <label>
-                            <input type="radio" name="q${q.id}" value="${i}" onchange="saveMcqAnswer(${q.id}, ${i})">
-                            ${opt}
-                        </label>
-                    `;
-                });
-                html += `</div>`;
-            } else if (q.type === "essay_hand") {
+        if (q.type === "mcq") {
+            const options = q.options.split("،");
+            options.forEach(opt => {
                 html += `
-                    <p>اكتب بخط يدك داخل المربع التالي:</p>
-                    <canvas id="essayCanvas"></canvas>
-                    <button type="button" class="btn" style="margin-top:10px;" onclick="clearCanvas()">مسح الكتابة</button>
+                    <label>
+                        <input type="radio" name="q${q.questionId}" value="${opt}">
+                        ${opt}
+                    </label><br>
                 `;
-            }
-
-            html += `</div>`;
-            container.innerHTML += html;
-        });
-
-        initCanvas();
-    }
-
-    function saveMcqAnswer(questionId, optionIndex) {
-        answers[questionId] = { type: "mcq", value: optionIndex };
-    }
-
-    // -----------------------------
-    // 5) الكانفس للكتابة بالقلم
-    // -----------------------------
-    function initCanvas() {
-        const canvas = document.getElementById("essayCanvas");
-        if (!canvas) return;
-
-        essayCanvas = canvas;
-        essayCtx = canvas.getContext("2d");
-
-        resizeCanvas();
-
-        essayCtx.lineWidth = 3;
-        essayCtx.lineCap = "round";
-        essayCtx.strokeStyle = "#000";
-
-        canvas.addEventListener("mousedown", startDraw);
-        canvas.addEventListener("mousemove", draw);
-        canvas.addEventListener("mouseup", endDraw);
-
-        canvas.addEventListener("touchstart", startDrawTouch, { passive: false });
-        canvas.addEventListener("touchmove", drawTouch, { passive: false });
-        canvas.addEventListener("touchend", endDrawTouch);
-    }
-
-    function resizeCanvas() {
-        if (!essayCanvas) return;
-        const rect = essayCanvas.getBoundingClientRect();
-        essayCanvas.width = rect.width;
-        essayCanvas.height = rect.height;
-    }
-
-    window.addEventListener("resize", resizeCanvas);
-
-    function startDraw(e) {
-        drawing = true;
-        essayCtx.beginPath();
-        essayCtx.moveTo(e.offsetX, e.offsetY);
-    }
-
-    function draw(e) {
-        if (!drawing) return;
-        essayCtx.lineTo(e.offsetX, e.offsetY);
-        essayCtx.stroke();
-    }
-
-    function endDraw() {
-        drawing = false;
-    }
-
-    function startDrawTouch(e) {
-        e.preventDefault();
-        drawing = true;
-        const rect = essayCanvas.getBoundingClientRect();
-        const touch = e.touches[0];
-        essayCtx.beginPath();
-        essayCtx.moveTo(touch.clientX - rect.left, touch.clientY - rect.top);
-    }
-
-    function drawTouch(e) {
-        e.preventDefault();
-        if (!drawing) return;
-        const rect = essayCanvas.getBoundingClientRect();
-        const touch = e.touches[0];
-        essayCtx.lineTo(touch.clientX - rect.left, touch.clientY - rect.top);
-        essayCtx.stroke();
-    }
-
-    function endDrawTouch() {
-        drawing = false;
-    }
-
-    function clearCanvas() {
-        if (!essayCtx || !essayCanvas) return;
-        essayCtx.clearRect(0, 0, essayCanvas.width, essayCanvas.height);
-    }
-
-    // -----------------------------
-    // 6) المؤقت
-    // -----------------------------
-    function startTimer() {
-        const timerDiv = document.getElementById("timer");
-        timeLeft = test.durationMinutes * 60;
-
-        const interval = setInterval(() => {
-            let min = Math.floor(timeLeft / 60);
-            let sec = timeLeft % 60;
-
-            timerDiv.textContent = `الوقت المتبقي: ${min}:${sec < 10 ? "0" + sec : sec}`;
-
-            if (timeLeft <= 0) {
-                clearInterval(interval);
-                submitExam();
-            }
-
-            timeLeft--;
-        }, 1000);
-    }
-
-    // -----------------------------
-    // 7) إنهاء الاختبار
-    // -----------------------------
-    function submitExam() {
-        if (essayCanvas) {
-            const imgData = essayCanvas.toDataURL("image/png");
-            const essayQuestion = test.questions.find(q => q.type === "essay_hand");
-            if (essayQuestion) {
-                answers[essayQuestion.id] = {
-                    type: "essay_hand",
-                    value: imgData
-                };
-            }
+            });
         }
 
-        console.log("إجابات الطالب:", answers);
-        alert("تم إرسال إجاباتك (تجريبيًا).");
+        if (q.type === "essay") {
+            html += `<textarea id="q${q.questionId}"></textarea>`;
+        }
 
-        // لاحقًا سيتم إرسالها إلى Google Sheet
-    }
+        if (q.type === "handwrite") {
+            html += `
+                <p>📷 ارفع صورة لإجابتك:</p>
+                <input type="file" id="q${q.questionId}">
+            `;
+        }
 
-    // -----------------------------
-    // تشغيل الصفحة
-    // -----------------------------
-    if (checkAvailability()) {
-        loadQuestions();
-        startTimer();
-    }
+        html += `</div>`;
+        container.innerHTML += html;
+    });
+}
+
+// إرسال الإجابات
+function submitExam() {
+    alert("تم إرسال الإجابات (سنضيف التخزين لاحقًا)");
+}
+
+loadQuestions();
 </script>
 
 </body>
